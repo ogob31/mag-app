@@ -4,7 +4,7 @@ pipeline {
 
   environment {
     APP_IMAGE = 'george524/mag-app'   // Docker Hub repo
-    APP_PORT  = '5000'                // Container port exposed by the app
+    APP_PORT  = '5000'                // App listens on this inside the container
   }
 
   stages {
@@ -31,8 +31,8 @@ pipeline {
           # Clean previous run
           docker rm -f mag-app-test || true
 
-          # Start the app container (default bridge network)
-          docker run -d --name mag-app-test -p ${APP_PORT}:${APP_PORT} ${APP_IMAGE}:${BUILD_NUMBER}
+          # Start the app container (no host port mapping needed)
+          docker run -d --name mag-app-test ${APP_IMAGE}:${BUILD_NUMBER}
 
           # Get the container's IP on the bridge network
           TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mag-app-test)
