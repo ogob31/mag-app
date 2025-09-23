@@ -4,7 +4,7 @@ pipeline {
 
   environment {
     APP_IMAGE = 'george524/mag-app'   // Docker Hub repo
-    APP_PORT  = '5000'
+    APP_PORT  = '5000'                // Container port exposed by the app
   }
 
   stages {
@@ -26,19 +26,23 @@ pipeline {
       steps {
         sh '''
           set -e
-          echo "=== MAG TEST STAGE v2 (with retry) ==="
+          echo "=== MAG TEST STAGE v3 (container IP) ==="
 
-          # Clean any previous container
+          # Clean previous run
           docker rm -f mag-app-test || true
 
-          # Map host 5000 -> container 5000 (Jenkins UI uses 8080, so avoid it)
+          # Start the app container (default bridge network)
           docker run -d --name mag-app-test -p ${APP_PORT}:${APP_PORT} ${APP_IMAGE}:${BUILD_NUMBER}
 
-          echo "Waiting for http://localhost:${APP_PORT}/health ..."
+          # Get the container's IP on the bridge network
+          TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mag-app-test)
+          echo "Container IP: $TARGET_IP"
+
+          echo "Waiting for http://$TARGET_IP:${APP_PORT}/health ..."
 
           # Retry up to 30s
           for i in {1..30}; do
-            if curl -fsS http://localhost:${APP_PORT}/health > /dev/null; then
+            if curl -fsS "http://$TARGET_IP:${APP_PORT}/health" > /dev/null; then
               echo "App is up and healthy!"
               break
             fi
@@ -46,7 +50,7 @@ pipeline {
           done
 
           # Final assert (verbose)
-          curl -v --fail http://localhost:${APP_PORT}/health
+          curl -v --fail "http://$TARGET_IP:${APP_PORT}/health"
         '''
       }
       post {
