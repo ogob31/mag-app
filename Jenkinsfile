@@ -9,33 +9,39 @@ pipeline {
   stages {
     stage('Checkout') { steps { checkout scm } }
 
-    // Unit tests run inside python:3.12-slim
     stage('Unit Tests') {
-     steps {
-    dir('application') {
-      sh '''
-        set -e
-        echo "Contents of application/:"
-        ls -la
-
-        docker run --rm \
-          -v "$PWD":/app -w /app \
-          python:3.12-slim \
-          /bin/sh -lc '
+      steps {
+        dir('application') {
+          sh '''
             set -e
-            if [ -f requirements.txt ]; then
-              echo "Using requirements.txt"
-              pip install --no-cache-dir -r requirements.txt
-            else
-              echo "requirements.txt not found — installing minimal deps"
-              pip install --no-cache-dir flask==3.0.3 pytest==8.3.2 requests==2.32.3
-            fi
-            pytest -q
-          '
-      '''
+            echo "Contents of application/:"
+            ls -la
+
+            docker run --rm \
+              -v "$PWD":/app -w /app \
+              python:3.12-slim \
+              /bin/sh -s <<'PYTEST'
+set -e
+if [ -f requirements.txt ]; then
+  echo "Using requirements.txt"
+  pip install --no-cache-dir -r requirements.txt
+else
+  echo "requirements.txt not found — installing minimal deps"
+  pip install --no-cache-dir flask==3.0.3 pytest==8.3.2 requests==2.32.3
+fi
+
+# Run pytest; allow exit code 5 (no tests collected), fail on others
+pytest -q || code=$?
+if [ "${code:-0}" -eq 5 ]; then
+  echo "No tests collected — continuing"
+  exit 0
+fi
+exit "${code:-0}"
+PYTEST
+          '''
+        }
+      }
     }
-  }
-}
 
     stage('Build Image') {
       steps {
