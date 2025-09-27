@@ -5,18 +5,20 @@ pipeline {
     APP_IMAGE = 'george524/mag-app'
     APP_PORT  = '5000'
   }
+
   stages {
     stage('Checkout') { steps { checkout scm } }
 
-    // NEW: unit tests (fast)
+    // Unit tests run inside python:3.12-slim
     stage('Unit Tests') {
       steps {
         dir('application') {
           sh '''
-            python3 -m venv .venv
-            . .venv/bin/activate
-            pip install --no-cache-dir -r requirements.txt
-            pytest -q
+            set -e
+            docker run --rm \
+              -v "$PWD":/app -w /app \
+              python:3.12-slim \
+              /bin/sh -c "pip install --no-cache-dir -r requirements.txt && pytest -q"
           '''
         }
       }
@@ -45,14 +47,20 @@ pipeline {
         '''
       }
       post {
-        always { sh 'docker logs mag-app-test || true; docker rm -f mag-app-test || true' }
+        always {
+          sh 'docker logs mag-app-test || true; docker rm -f mag-app-test || true'
+        }
       }
     }
 
     stage('Push (optional)') {
       when { branch 'main' }
       steps {
-        withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+        withCredentials([usernamePassword(
+          credentialsId: 'docker-hub-creds',
+          usernameVariable: 'DOCKERHUB_USER',
+          passwordVariable: 'DOCKERHUB_PASS'
+        )]) {
           sh '''
             set -e
             echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
@@ -68,7 +76,6 @@ pipeline {
       }
     }
 
-    // NEW: simple deploy on this host (port 80 -> 5000)
     stage('Deploy (main)') {
       when { branch 'main' }
       steps {
@@ -77,7 +84,6 @@ pipeline {
           docker rm -f mag-app || true
           docker pull ${APP_IMAGE}:latest
           docker run -d --name mag-app -p 80:5000 ${APP_IMAGE}:latest
-          # quick health probe via host port 80
           for i in {1..20}; do
             curl -fsS http://localhost/health && break
             sleep 1
@@ -87,6 +93,7 @@ pipeline {
       }
     }
   }
+
   post {
     success { echo "SUCCESS: Built, tested, pushed & deployed ${APP_IMAGE}:${BUILD_NUMBER}" }
     failure { echo "FAILED: Check logs" }
