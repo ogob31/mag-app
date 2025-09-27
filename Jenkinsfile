@@ -11,18 +11,31 @@ pipeline {
 
     // Unit tests run inside python:3.12-slim
     stage('Unit Tests') {
-      steps {
-        dir('application') {
-          sh '''
+     steps {
+    dir('application') {
+      sh '''
+        set -e
+        echo "Contents of application/:"
+        ls -la
+
+        docker run --rm \
+          -v "$PWD":/app -w /app \
+          python:3.12-slim \
+          /bin/sh -lc '
             set -e
-            docker run --rm \
-              -v "$PWD":/app -w /app \
-              python:3.12-slim \
-              /bin/sh -c "pip install --no-cache-dir -r requirements.txt && pytest -q"
-          '''
-        }
-      }
+            if [ -f requirements.txt ]; then
+              echo "Using requirements.txt"
+              pip install --no-cache-dir -r requirements.txt
+            else
+              echo "requirements.txt not found — installing minimal deps"
+              pip install --no-cache-dir flask==3.0.3 pytest==8.3.2 requests==2.32.3
+            fi
+            pytest -q
+          '
+      '''
     }
+  }
+}
 
     stage('Build Image') {
       steps {
