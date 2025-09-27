@@ -6,8 +6,12 @@ resource "tls_private_key" "mag_ssh" {
 
 # Create an AWS EC2 key pair from the public key
 resource "aws_key_pair" "mag_key" {
-  key_name   = "mag-runner-key"
+  key_name   = "mag-runner-key" # <- fixed name
   public_key = tls_private_key.mag_ssh.public_key_openssh
+
+  lifecycle {
+    prevent_destroy = true # optional safety
+  }
 }
 
 # Save the private key to a local PEM file (DO NOT COMMIT)
